@@ -1,0 +1,174 @@
+services:
+  # Product Service
+  product-service:
+    build:
+      context: ./product-service
+    ports:
+      - "5000:5000"
+    env_file:
+      - ./product-service/.env
+    volumes:
+      - ./product-service:/app
+      - /app/node_modules
+    restart: unless-stopped
+    networks:
+      - microservice-network
+    depends_on:
+      - product-db
+
+  product-db:
+    image: mongo:6
+    volumes:
+      - product-db-data:/data/db
+    restart: unless-stopped
+    networks:
+      - microservice-network
+
+  # Order Service
+  order-service:
+    build:
+      context: ./order-service
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./order-service/.env
+    volumes:
+      - ./order-service:/app
+      - /app/node_modules
+    restart: unless-stopped
+    networks:
+      - microservice-network
+    depends_on:
+      - order-db
+
+  order-db:
+    image: mongo:6
+    volumes:
+      - order-db-data:/data/db
+    restart: unless-stopped
+    networks:
+      - microservice-network
+
+  # Customer Service
+  customer-service:
+    build:
+      context: ./customer-service
+    ports:
+      - "5002:5002"
+    env_file:
+      - ./customer-service/.env
+    volumes:
+      - ./customer-service:/app
+      - /app/node_modules
+    restart: unless-stopped
+    networks:
+      - microservice-network
+    depends_on:
+      - customer-db
+
+  customer-db:
+    image: mongo:6
+    volumes:
+      - customer-db-data:/data/db
+    restart: unless-stopped
+    networks:
+      - microservice-network
+
+  # Kong Gateway
+  kong-database:
+    image: postgres:13
+    container_name: kong-database
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kongpass
+    volumes:
+      - kong-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - kong-net
+
+  kong-migrations:
+    image: kong:3.4.0
+    container_name: kong-migrations
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kongpass
+    command: kong migrations bootstrap
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - kong-net
+
+  kong:
+    image: kong:3.4.0
+    container_name: kong
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kongpass
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_ADMIN_GUI_URL: http://localhost:8002
+    depends_on:
+      kong-migrations:
+        condition: service_completed_successfully
+      product-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      customer-service:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    ports:
+      - "8000:8000" # Kong proxy
+      - "8001:8001" # Kong Admin API
+      - "8002:8002" # Kong Admin GUI
+      - "8443:8443" # Kong proxy SSL
+      - "8444:8444" # Kong Admin API SSL
+    networks:
+      - kong-net
+      - microservice-network
+
+  kong-setup:
+    image: curlimages/curl:latest
+    container_name: kong-setup
+    volumes:
+      - ./kong-gateway/setup-kong.sh:/setup-kong.sh
+    command: sh -c "chmod +x /setup-kong.sh && sleep 20 && /setup-kong.sh"
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - kong-net
+      - microservice-network
+
+volumes:
+  product-db-data:
+  order-db-data:
+  customer-db-data:
+  kong-db-data:
+
+networks:
+  microservice-network:
+    driver: bridge
+  kong-net:
+    driver: bridge
