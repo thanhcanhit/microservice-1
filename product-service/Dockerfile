@@ -4,7 +4,7 @@ WORKDIR /app
 # Install dependencies only when needed
 FROM base AS deps
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -24,6 +24,6 @@ COPY --from=builder /app/routes ./routes
 COPY --from=builder /app/index.js ./index.js
 COPY --from=builder /app/package.json ./package.json
 
-EXPOSE 5000 
+EXPOSE 5000
 
 CMD ["node", "index.js"]
