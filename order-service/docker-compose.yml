@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+    ports:
+      - "${PORT:-5001}:${PORT:-5001}"
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-5001}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - order-network
+
+  mongodb:
+    image: mongo:6
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - order-network
+
+volumes:
+  mongo-data:
+
+networks:
+  order-network:
+    driver: bridge
