@@ -161,6 +161,17 @@ services:
       - kong-net
       - microservice-network
 
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - kong
+    networks:
+      - microservice-network
+
 volumes:
   product-db-data:
   order-db-data:
